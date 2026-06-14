@@ -1,3 +1,13 @@
+export type UserRole = "super_admin" | "school_admin" | "manager" | "cashier";
+
+export interface UserMe {
+  id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  tenant_id: string;
+}
+
 export interface Category {
   id: string;
   name: string;
