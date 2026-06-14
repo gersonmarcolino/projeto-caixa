@@ -17,7 +17,7 @@ from app.schemas.customer import (
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 
-@router.get("/", response_model=list[CustomerOut])
+@router.get("", response_model=list[CustomerOut])
 def list_customers(
     active_only: bool = True,
     current_user: User = Depends(get_current_user),
@@ -46,7 +46,7 @@ def list_debtors(
     )
 
 
-@router.post("/", response_model=CustomerOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=CustomerOut, status_code=status.HTTP_201_CREATED)
 def create_customer(
     payload: CustomerCreate,
     current_user: User = Depends(require_manager),

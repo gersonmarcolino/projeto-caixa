@@ -15,7 +15,7 @@ def get_current_user(
 ) -> User:
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Não autenticado")
-    payload = decode_token(credentials.credentials)
+    payload = decode_token(credentials.credentials, expected_type="access")
     if not payload:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token inválido ou expirado")
 

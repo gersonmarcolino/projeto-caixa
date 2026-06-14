@@ -18,6 +18,7 @@ def verify_password(plain: str, hashed: str) -> bool:
 
 def create_access_token(data: dict) -> str:
     payload = data.copy()
+    payload["type"] = "access"
     payload["exp"] = datetime.now(timezone.utc) + timedelta(
         minutes=settings.access_token_expire_minutes
     )
@@ -26,14 +27,18 @@ def create_access_token(data: dict) -> str:
 
 def create_refresh_token(data: dict) -> str:
     payload = data.copy()
+    payload["type"] = "refresh"
     payload["exp"] = datetime.now(timezone.utc) + timedelta(
         days=settings.refresh_token_expire_days
     )
     return jwt.encode(payload, settings.secret_key, algorithm=settings.algorithm)
 
 
-def decode_token(token: str) -> dict | None:
+def decode_token(token: str, expected_type: str | None = None) -> dict | None:
     try:
-        return jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
     except JWTError:
         return None
+    if expected_type is not None and payload.get("type") != expected_type:
+        return None
+    return payload

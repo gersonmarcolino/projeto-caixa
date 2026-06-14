@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session, joinedload
@@ -35,23 +36,27 @@ def create_sale(payload: SaleCreate, current_user: User = Depends(get_current_us
                 detail=f"Estoque insuficiente para '{products[item.product_id].name}'",
             )
 
+    # Toda a aritmética monetária usa Decimal — product.price vem do banco como Decimal
+    # e amount_paid chega como float do Pydantic; misturar os dois lança TypeError.
+    amount_paid = Decimal(str(payload.amount_paid)) if payload.amount_paid is not None else None
+
     if payload.payment_method == PaymentMethod.dinheiro:
-        if payload.amount_paid is None:
+        if amount_paid is None:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Informe o valor recebido")
 
-    total = sum(products[item.product_id].price * item.quantity for item in payload.items)
+    total = sum((products[item.product_id].price * item.quantity for item in payload.items), Decimal("0"))
 
-    if payload.payment_method == PaymentMethod.dinheiro and payload.amount_paid < total:
+    if payload.payment_method == PaymentMethod.dinheiro and amount_paid < total:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Valor recebido menor que o total")
 
-    change = round(payload.amount_paid - total, 2) if payload.payment_method == PaymentMethod.dinheiro else None
+    change = (amount_paid - total) if payload.payment_method == PaymentMethod.dinheiro else None
 
     sale = Sale(
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
         payment_method=payload.payment_method,
         total=total,
-        amount_paid=payload.amount_paid,
+        amount_paid=amount_paid,
         change=change,
     )
     db.add(sale)
@@ -64,9 +69,9 @@ def create_sale(payload: SaleCreate, current_user: User = Depends(get_current_us
             sale_id=sale.id,
             product_id=product.id,
             product_name=product.name,
-            unit_price=float(product.price),
+            unit_price=product.price,
             quantity=item.quantity,
-            subtotal=round(float(product.price) * item.quantity, 2),
+            subtotal=product.price * item.quantity,
         )
         db.add(si)
         sale_items.append(si)
@@ -85,8 +90,8 @@ def create_sale(payload: SaleCreate, current_user: User = Depends(get_current_us
             "sale_id": sale.id,
             "total": float(total),
             "payment_method": payload.payment_method,
-            "amount_paid": payload.amount_paid,
-            "change": change,
+            "amount_paid": float(amount_paid) if amount_paid is not None else None,
+            "change": float(change) if change is not None else None,
             "items": receipt_items,
         }),
     )

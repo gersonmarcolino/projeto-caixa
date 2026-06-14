@@ -25,7 +25,7 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
 
 @router.post("/refresh", response_model=TokenResponse)
 def refresh(payload: RefreshRequest, db: Session = Depends(get_db)):
-    decoded = decode_token(payload.refresh_token)
+    decoded = decode_token(payload.refresh_token, expected_type="refresh")
     if not decoded:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token inválido")
 

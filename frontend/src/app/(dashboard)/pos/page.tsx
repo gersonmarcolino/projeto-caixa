@@ -28,15 +28,28 @@ export default function POSPage() {
   const [lastSale, setLastSale] = useState<SaleOut | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
-  useEffect(() => {
-    Promise.all([
-      api.get<Product[]>("/products?active_only=true"),
-      api.get<Category[]>("/categories"),
-    ]).then(([prodRes, catRes]) => {
+  async function loadData() {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const [prodRes, catRes] = await Promise.all([
+        api.get<Product[]>("/products?active_only=true"),
+        api.get<Category[]>("/categories"),
+      ]);
       setProducts(prodRes.data);
       setCategories(catRes.data);
-    });
+    } catch {
+      setLoadError("Não foi possível carregar produtos. Verifique a conexão.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadData();
   }, []);
 
   const filtered = activeCategory === "all"
@@ -157,7 +170,19 @@ export default function POSPage() {
 
         {/* Grid de produtos */}
         <div className="flex-1 overflow-y-auto">
-          {filtered.length === 0 ? (
+          {loading ? (
+            <p className="text-sm text-gray-400 text-center mt-16">Carregando produtos...</p>
+          ) : loadError ? (
+            <div className="text-center mt-16">
+              <p className="text-sm text-red-500">{loadError}</p>
+              <button
+                onClick={loadData}
+                className="mt-3 text-sm text-primary-600 font-medium hover:text-primary-700"
+              >
+                Tentar novamente
+              </button>
+            </div>
+          ) : filtered.length === 0 ? (
             <p className="text-sm text-gray-400 text-center mt-16">Nenhum produto nesta categoria.</p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
