@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShoppingCart, Plus, Minus, Trash2, CheckCircle } from "lucide-react";
+import { ShoppingCart, Plus, Minus, Trash2, CheckCircle, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import { CartItem, Category, PaymentMethod, Product, SaleOut } from "@/lib/types";
 
@@ -21,6 +21,7 @@ export default function POSPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [search, setSearch] = useState("");
   const [cart, setCart] = useState<CartItem[]>([]);
   const [step, setStep] = useState<CheckoutStep>("idle");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
@@ -52,9 +53,11 @@ export default function POSPage() {
     loadData();
   }, []);
 
-  const filtered = activeCategory === "all"
-    ? products
-    : products.filter((p) => p.category_id === activeCategory);
+  const filtered = products.filter((p) => {
+    const matchesCategory = activeCategory === "all" || p.category_id === activeCategory;
+    const matchesSearch = p.name.toLowerCase().includes(search.trim().toLowerCase());
+    return matchesCategory && matchesSearch;
+  });
 
   const total = cart.reduce((sum, item) => sum + item.product.price * item.quantity, 0);
   const cartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -141,6 +144,27 @@ export default function POSPage() {
     <div className="flex h-full gap-4 -m-6 p-0 overflow-hidden">
       {/* Painel esquerdo — produtos */}
       <div className="flex-1 flex flex-col overflow-hidden bg-gray-50 p-4">
+        {/* Busca de produto */}
+        <div className="relative mb-3">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar produto..."
+            className="w-full pl-9 pr-9 py-2 rounded-lg border border-gray-200 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500"
+              title="Limpar"
+            >
+              <Trash2 size={14} />
+            </button>
+          )}
+        </div>
+
         {/* Tabs de categoria */}
         <div className="flex gap-2 mb-4 flex-wrap">
           <button
@@ -183,7 +207,9 @@ export default function POSPage() {
               </button>
             </div>
           ) : filtered.length === 0 ? (
-            <p className="text-sm text-gray-400 text-center mt-16">Nenhum produto nesta categoria.</p>
+            <p className="text-sm text-gray-400 text-center mt-16">
+              {search ? "Nenhum produto encontrado." : "Nenhum produto nesta categoria."}
+            </p>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {filtered.map((product) => {
