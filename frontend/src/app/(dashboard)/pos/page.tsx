@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { ShoppingCart, Plus, Minus, Trash2, CheckCircle, Search } from "lucide-react";
 import { api } from "@/lib/api";
-import { CartItem, Category, PaymentMethod, Product, SaleOut } from "@/lib/types";
+import { CartItem, Category, Customer, PaymentMethod, Product, SaleOut } from "@/lib/types";
 
 type CheckoutStep = "idle" | "checkout" | "success";
 
@@ -26,6 +26,8 @@ export default function POSPage() {
   const [step, setStep] = useState<CheckoutStep>("idle");
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
   const [amountPaid, setAmountPaid] = useState("");
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [lastSale, setLastSale] = useState<SaleOut | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [checkoutError, setCheckoutError] = useState("");
@@ -36,12 +38,14 @@ export default function POSPage() {
     setLoading(true);
     setLoadError("");
     try {
-      const [prodRes, catRes] = await Promise.all([
+      const [prodRes, catRes, custRes] = await Promise.all([
         api.get<Product[]>("/products?active_only=true"),
         api.get<Category[]>("/categories"),
+        api.get<Customer[]>("/customers"),
       ]);
       setProducts(prodRes.data);
       setCategories(catRes.data);
+      setCustomers(custRes.data);
     } catch {
       setLoadError("Não foi possível carregar produtos. Verifique a conexão.");
     } finally {
@@ -89,6 +93,7 @@ export default function POSPage() {
   function openCheckout() {
     setPaymentMethod("dinheiro");
     setAmountPaid("");
+    setSelectedCustomerId("");
     setCheckoutError("");
     setStep("checkout");
   }
@@ -105,6 +110,10 @@ export default function POSPage() {
       setCheckoutError("Valor recebido menor que o total.");
       return;
     }
+    if (paymentMethod === "credito_aluno" && !selectedCustomerId) {
+      setCheckoutError("Selecione o aluno.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -112,6 +121,7 @@ export default function POSPage() {
         items: cart.map((i) => ({ product_id: i.product.id, quantity: i.quantity })),
         payment_method: paymentMethod,
         amount_paid: paid ?? null,
+        customer_id: paymentMethod === "credito_aluno" ? selectedCustomerId : null,
       });
       setLastSale(data);
       setCart([]);
@@ -124,6 +134,15 @@ export default function POSPage() {
           return soldItem ? { ...p, stock_quantity: p.stock_quantity - soldItem.quantity } : p;
         })
       );
+
+      // Atualiza saldo local do aluno em compras no crédito
+      if (paymentMethod === "credito_aluno") {
+        setCustomers((prev) =>
+          prev.map((c) =>
+            c.id === selectedCustomerId ? { ...c, credit_balance: c.credit_balance - data.total } : c
+          )
+        );
+      }
     } catch (err: any) {
       setCheckoutError(err?.response?.data?.detail ?? "Erro ao registrar venda.");
     } finally {
@@ -139,6 +158,8 @@ export default function POSPage() {
   const change = paymentMethod === "dinheiro" && amountPaid
     ? parseFloat(amountPaid) - total
     : null;
+
+  const selectedCustomer = customers.find((c) => c.id === selectedCustomerId) ?? null;
 
   return (
     <div className="flex h-full gap-4 -m-6 p-0 overflow-hidden">
@@ -322,22 +343,48 @@ export default function POSPage() {
 
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Forma de pagamento</label>
-              <div className="grid grid-cols-2 gap-2">
-                {(["dinheiro", "pix"] as PaymentMethod[]).map((method) => (
+              <div className="grid grid-cols-3 gap-2">
+                {(["dinheiro", "pix", "credito_aluno"] as PaymentMethod[]).map((method) => (
                   <button
                     key={method}
-                    onClick={() => { setPaymentMethod(method); setAmountPaid(""); }}
-                    className={`py-2 rounded-lg text-sm font-medium border transition-colors ${
+                    onClick={() => { setPaymentMethod(method); setAmountPaid(""); setCheckoutError(""); }}
+                    className={`py-2 px-1 rounded-lg text-xs font-medium border leading-tight transition-colors ${
                       paymentMethod === method
                         ? "bg-primary-600 text-white border-primary-600"
                         : "bg-white text-gray-600 border-gray-200 hover:border-primary-300"
                     }`}
                   >
-                    {PAYMENT_LABELS[method]}
+                    {method === "credito_aluno" ? "Crédito" : PAYMENT_LABELS[method]}
                   </button>
                 ))}
               </div>
             </div>
+
+            {paymentMethod === "credito_aluno" && (
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Aluno</label>
+                <select
+                  value={selectedCustomerId}
+                  onChange={(e) => setSelectedCustomerId(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                >
+                  <option value="">Selecione o aluno...</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={c.id} disabled={c.is_blocked}>
+                      {c.name}{c.class_name ? ` (${c.class_name})` : ""} — saldo {formatPrice(c.credit_balance)}{c.is_blocked ? " [bloqueado]" : ""}
+                    </option>
+                  ))}
+                </select>
+                {selectedCustomer && (
+                  <p className={`text-sm mt-1 font-medium ${selectedCustomer.credit_balance - total < 0 ? "text-amber-600" : "text-green-600"}`}>
+                    Saldo após a compra: {formatPrice(selectedCustomer.credit_balance - total)}
+                  </p>
+                )}
+                {customers.length === 0 && (
+                  <p className="text-xs text-gray-400 mt-1">Nenhum aluno cadastrado. Cadastre em Clientes.</p>
+                )}
+              </div>
+            )}
 
             {paymentMethod === "dinheiro" && (
               <div className="mb-4">

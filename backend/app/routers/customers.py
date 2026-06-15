@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -96,7 +98,7 @@ def recharge(
     if not customer:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Cliente não encontrado")
 
-    customer.credit_balance = float(customer.credit_balance) + payload.amount
+    customer.credit_balance = customer.credit_balance + Decimal(str(payload.amount))
     tx = CreditTransaction(
         tenant_id=current_user.tenant_id,
         customer_id=customer.id,

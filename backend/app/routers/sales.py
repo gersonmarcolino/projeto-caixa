@@ -6,6 +6,8 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core.deps import get_current_user
+from app.models.credit_transaction import CreditTransaction, TransactionType
+from app.models.customer import Customer
 from app.models.print_job import PrintJob
 from app.models.product import Product
 from app.models.sale import PaymentMethod, Sale, SaleItem
@@ -49,11 +51,29 @@ def create_sale(payload: SaleCreate, current_user: User = Depends(get_current_us
     if payload.payment_method == PaymentMethod.dinheiro and amount_paid < total:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Valor recebido menor que o total")
 
+    # Pagamento por crédito do aluno: valida cliente, bloqueio e limite
+    customer = None
+    if payload.payment_method == PaymentMethod.credito_aluno:
+        if not payload.customer_id:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Selecione o aluno para pagamento no crédito")
+        customer = db.query(Customer).filter(
+            Customer.id == payload.customer_id,
+            Customer.tenant_id == current_user.tenant_id,
+            Customer.is_active == True,
+        ).first()
+        if not customer:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Aluno não encontrado")
+        if customer.is_blocked:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Aluno bloqueado para compras no crédito")
+        if customer.credit_balance - total < -customer.credit_limit:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Limite de crédito excedido")
+
     change = (amount_paid - total) if payload.payment_method == PaymentMethod.dinheiro else None
 
     sale = Sale(
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
+        customer_id=customer.id if customer else None,
         payment_method=payload.payment_method,
         total=total,
         amount_paid=amount_paid,
@@ -76,6 +96,18 @@ def create_sale(payload: SaleCreate, current_user: User = Depends(get_current_us
         db.add(si)
         sale_items.append(si)
         product.stock_quantity -= item.quantity
+
+    # Debita o saldo do aluno e registra a transação de crédito
+    if customer is not None:
+        customer.credit_balance = customer.credit_balance - total
+        db.add(CreditTransaction(
+            tenant_id=current_user.tenant_id,
+            customer_id=customer.id,
+            sale_id=sale.id,
+            type=TransactionType.debit,
+            amount=total,
+            description="Compra no caixa",
+        ))
 
     db.flush()
 

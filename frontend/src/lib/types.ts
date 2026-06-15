@@ -27,6 +27,26 @@ export interface Product {
 
 export type PaymentMethod = "dinheiro" | "pix" | "credito_aluno";
 
+export interface Customer {
+  id: string;
+  name: string;
+  class_name: string | null;
+  credit_balance: number;
+  credit_limit: number;
+  is_blocked: boolean;
+  is_active: boolean;
+}
+
+export type TransactionType = "recharge" | "debit";
+
+export interface CreditTransaction {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  description: string | null;
+  created_at: string;
+}
+
 export interface CartItem {
   product: Product;
   quantity: number;
@@ -47,6 +67,7 @@ export interface SaleOut {
   total: number;
   amount_paid: number | null;
   change: number | null;
+  customer_id: string | null;
   created_at: string;
   items: SaleItemOut[];
 }

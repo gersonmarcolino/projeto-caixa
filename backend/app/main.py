@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, categories, print_jobs, products, sales
+from app.routers import auth, categories, customers, print_jobs, products, sales
 
 app = FastAPI(title="Cafeteria SaaS API", version="0.1.0", redirect_slashes=False)
 
@@ -16,6 +16,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api")
 app.include_router(categories.router, prefix="/api")
 app.include_router(products.router, prefix="/api")
+app.include_router(customers.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
 app.include_router(print_jobs.router, prefix="/api")
 
