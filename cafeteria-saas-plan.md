@@ -2,8 +2,9 @@
 
 **Projeto:** Sistema de Gestão de Lanchonete Escolar  
 **Modelo:** SaaS (venda de serviço por escola)  
-**Status:** Planejamento  
-**Criado em:** 2026-06-05
+**Status:** Em desenvolvimento (Fases 1–3 concluídas)  
+**Criado em:** 2026-06-05  
+**Última atualização:** 2026-06-15
 
 ---
 
@@ -120,27 +121,30 @@ print_jobs       → fila de impressão (status: pending/done)
 
 ## Fases de Implementação
 
-### Fase 1 — Fundação (Semana 1-2)
-- [ ] Setup do monorepo (frontend + backend separados)
-- [ ] Configuração Supabase (banco + variáveis)
-- [ ] Models SQLAlchemy + migrations Alembic
-- [ ] Auth JWT (login, refresh token, roles)
-- [ ] CRUD de produtos e categorias
-- [ ] Layout base Next.js (sidebar, header, rotas protegidas)
+### Fase 1 — Fundação (Semana 1-2) ✅ CONCLUÍDA
+- [x] Setup do monorepo (frontend + backend separados)
+- [x] Configuração Supabase (banco + variáveis)
+- [x] Models SQLAlchemy + migrations Alembic
+- [x] Auth JWT (login, refresh token, roles) — access/refresh distinguidos por claim `type`
+- [x] CRUD de produtos e categorias (com validação de categoria por tenant)
+- [x] Layout base Next.js (sidebar, header, rotas protegidas)
 
-### Fase 2 — POS Core (Semana 3-4)
-- [ ] Interface de caixa (POS)
-- [ ] Carrinho e fechamento de venda
-- [ ] Baixa de estoque automática por venda
-- [ ] Fila de impressão (tabela print_jobs)
-- [ ] Agente de impressão local (`print-agent.py`)
+### Fase 2 — POS Core (Semana 3-4) ✅ (exceto print-agent)
+- [x] Interface de caixa (POS) — com busca de produto
+- [x] Carrinho e fechamento de venda — aritmética monetária em Decimal
+- [x] Baixa de estoque automática por venda
+- [x] Fila de impressão (tabela print_jobs)
+- [x] Tela de estoque (entrada de mercadoria, alerta de estoque baixo)
+- [ ] Agente de impressão local (`print-agent.py`) — PENDENTE
 
-### Fase 3 — Crédito & Devedores (Semana 5)
-- [ ] Cadastro de alunos/clientes
-- [ ] Conta corrente de crédito
-- [ ] Recarga manual de saldo
-- [ ] Bloqueio por limite
-- [ ] Tela de devedores
+### Fase 3 — Crédito & Devedores (Semana 5) ✅ CONCLUÍDA
+- [x] Cadastro de alunos/clientes
+- [x] Conta corrente de crédito
+- [x] Recarga manual de saldo
+- [x] Bloqueio por limite (limite = dívida máxima permitida)
+- [x] Tela de devedores
+- [x] Pagamento por crédito do aluno no POS (com seleção de cliente)
+- [x] Extrato com itens da compra (expansível)
 
 ### Fase 4 — Relatórios (Semana 6)
 - [ ] Relatório de vendas por período
@@ -211,6 +215,35 @@ cafeteria-saas/
 
 ---
 
+## Histórico de Implementação
+
+### 2026-06-05 — Fundação e POS (Fases 1, 2 e backend da Fase 3)
+- Scaffold backend (FastAPI) e frontend (Next.js), Supabase conectado
+- Auth JWT, CRUD produtos/categorias, POS, vendas, fila de impressão
+- Backend da Fase 3 (clientes/crédito) criado, porém ainda não plugado
+
+### 2026-06-15 — Revisão, correções e Fase 3 completa
+Revisão das Fases 1 e 2 (segurança, usabilidade, composição) e correções:
+- **Bug crítico:** venda em dinheiro quebrava por mistura `Decimal`/`float` → padronizado `Decimal` em toda aritmética monetária
+- **Segurança:** access e refresh token passaram a ser distinguidos por claim `type`
+- **Multi-tenant:** `category_id` de produto validado contra o tenant do usuário
+- **Consistência:** rotas do `customers` padronizadas sem trailing slash
+- **UX:** POS com estados de loading/erro; busca de produto no caixa
+- **Ambiente:** `start-dev.ps1` corrigido (caminho/porta), venv recriado, `email-validator` adicionado ao requirements
+
+Novas páginas e features:
+- Páginas `/stock` (estoque) e `/settings` (conta)
+- **Fase 3 concluída:** `customers` router plugado; pagamento por crédito do aluno no POS (valida cliente, bloqueio e limite, debita saldo e registra transação); páginas `/customers` (CRUD, recarga, extrato, bloqueio) e `/credit` (devedores)
+- Extrato do cliente com itens da compra (endpoint `GET /sales/{id}`)
+- Formas de pagamento **Cartão de Crédito** e **Cartão de Débito**
+
+Repositório: consolidado tudo no branch `main` (branch `master` removido).
+
+---
+
 ## Próximo Passo
 
-Iniciar **Fase 1 — Fundação**: scaffold do projeto, configuração do banco e auth.
+Itens pendentes para concluir o produto:
+1. **Print-agent** (`print-agent.py`) — fecha a Fase 2 (impressão real do cupom)
+2. **Fase 4 — Relatórios** — vendas/estoque/crédito com export PDF e Excel
+3. **Fase 5 — Deploy** — backend (Railway), frontend (Vercel), onboarding de escola
