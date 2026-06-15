@@ -44,6 +44,7 @@ export interface CreditTransaction {
   type: TransactionType;
   amount: number;
   description: string | null;
+  sale_id: string | null;
   created_at: string;
 }
 

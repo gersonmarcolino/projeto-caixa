@@ -144,3 +144,16 @@ def list_sales(current_user: User = Depends(get_current_user), db: Session = Dep
         .limit(100)
         .all()
     )
+
+
+@router.get("/{sale_id}", response_model=SaleOut)
+def get_sale(sale_id: str, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    sale = (
+        db.query(Sale)
+        .options(joinedload(Sale.items))
+        .filter(Sale.id == sale_id, Sale.tenant_id == current_user.tenant_id)
+        .first()
+    )
+    if not sale:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Venda não encontrada")
+    return sale

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, Pencil, Wallet, Receipt, Ban } from "lucide-react";
+import { Plus, Pencil, Wallet, Receipt, Ban, ChevronRight, ChevronDown } from "lucide-react";
 import { api } from "@/lib/api";
-import { Customer, CreditTransaction, UserMe } from "@/lib/types";
+import { Customer, CreditTransaction, SaleOut, UserMe } from "@/lib/types";
 
 const MANAGER_ROLES = ["super_admin", "school_admin", "manager"];
 
@@ -47,6 +47,9 @@ export default function CustomersPage() {
   const [statementTarget, setStatementTarget] = useState<Customer | null>(null);
   const [statement, setStatement] = useState<CreditTransaction[]>([]);
   const [statementLoading, setStatementLoading] = useState(false);
+  const [expandedSale, setExpandedSale] = useState<string | null>(null);
+  const [saleCache, setSaleCache] = useState<Record<string, SaleOut>>({});
+  const [saleLoading, setSaleLoading] = useState(false);
 
   async function loadData() {
     setLoading(true);
@@ -145,12 +148,32 @@ export default function CustomersPage() {
   async function openStatement(c: Customer) {
     setStatementTarget(c);
     setStatement([]);
+    setExpandedSale(null);
     setStatementLoading(true);
     try {
       const { data } = await api.get<CreditTransaction[]>(`/customers/${c.id}/statement`);
       setStatement(data);
     } finally {
       setStatementLoading(false);
+    }
+  }
+
+  async function toggleSaleItems(saleId: string) {
+    if (expandedSale === saleId) {
+      setExpandedSale(null);
+      return;
+    }
+    setExpandedSale(saleId);
+    if (!saleCache[saleId]) {
+      setSaleLoading(true);
+      try {
+        const { data } = await api.get<SaleOut>(`/sales/${saleId}`);
+        setSaleCache((prev) => ({ ...prev, [saleId]: data }));
+      } catch {
+        setExpandedSale(null);
+      } finally {
+        setSaleLoading(false);
+      }
     }
   }
 
@@ -313,17 +336,52 @@ export default function CustomersPage() {
                 <p className="text-sm text-gray-400 text-center py-8">Nenhuma movimentação.</p>
               ) : (
                 <ul className="divide-y divide-gray-100">
-                  {statement.map((t) => (
-                    <li key={t.id} className="flex items-center justify-between py-2.5">
-                      <div>
-                        <p className="text-sm text-gray-900">{t.type === "recharge" ? "Recarga" : "Compra"}</p>
-                        <p className="text-xs text-gray-400">{formatDate(t.created_at)}{t.description ? ` · ${t.description}` : ""}</p>
-                      </div>
-                      <span className={`text-sm font-medium ${t.type === "recharge" ? "text-green-600" : "text-red-600"}`}>
-                        {t.type === "recharge" ? "+" : "−"}{formatPrice(t.amount)}
-                      </span>
-                    </li>
-                  ))}
+                  {statement.map((t) => {
+                    const expandable = t.type === "debit" && !!t.sale_id;
+                    const isOpen = expandable && expandedSale === t.sale_id;
+                    const sale = t.sale_id ? saleCache[t.sale_id] : undefined;
+                    return (
+                      <li key={t.id} className="py-2.5">
+                        <div
+                          className={`flex items-center justify-between ${expandable ? "cursor-pointer" : ""}`}
+                          onClick={expandable ? () => toggleSaleItems(t.sale_id!) : undefined}
+                        >
+                          <div className="flex items-center gap-1.5">
+                            {expandable && (
+                              isOpen
+                                ? <ChevronDown size={14} className="text-gray-400 shrink-0" />
+                                : <ChevronRight size={14} className="text-gray-400 shrink-0" />
+                            )}
+                            <div>
+                              <p className="text-sm text-gray-900">{t.type === "recharge" ? "Recarga" : "Compra"}</p>
+                              <p className="text-xs text-gray-400">{formatDate(t.created_at)}{t.description ? ` · ${t.description}` : ""}</p>
+                            </div>
+                          </div>
+                          <span className={`text-sm font-medium ${t.type === "recharge" ? "text-green-600" : "text-red-600"}`}>
+                            {t.type === "recharge" ? "+" : "−"}{formatPrice(t.amount)}
+                          </span>
+                        </div>
+                        {isOpen && (
+                          <div className="mt-2 ml-5 rounded-lg bg-gray-50 p-3">
+                            {saleLoading && !sale ? (
+                              <p className="text-xs text-gray-400">Carregando itens...</p>
+                            ) : sale ? (
+                              <ul className="space-y-1">
+                                {sale.items.map((it) => (
+                                  <li key={it.id} className="flex justify-between text-xs text-gray-600">
+                                    <span>{it.quantity}× {it.product_name}</span>
+                                    <span>{formatPrice(it.subtotal)}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            ) : (
+                              <p className="text-xs text-gray-400">Não foi possível carregar os itens.</p>
+                            )}
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
