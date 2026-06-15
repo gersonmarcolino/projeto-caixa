@@ -11,6 +11,8 @@ from app.core.database import Base
 class PaymentMethod(str, Enum):
     dinheiro = "dinheiro"
     pix = "pix"
+    cartao_credito = "cartao_credito"
+    cartao_debito = "cartao_debito"
     credito_aluno = "credito_aluno"
 
 

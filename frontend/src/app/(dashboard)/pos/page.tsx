@@ -10,8 +10,27 @@ type CheckoutStep = "idle" | "checkout" | "success";
 const PAYMENT_LABELS: Record<PaymentMethod, string> = {
   dinheiro: "Dinheiro",
   pix: "PIX",
+  cartao_credito: "Cartão de Crédito",
+  cartao_debito: "Cartão de Débito",
   credito_aluno: "Crédito do Aluno",
 };
+
+// Rótulos curtos para os botões do checkout
+const PAYMENT_SHORT: Record<PaymentMethod, string> = {
+  dinheiro: "Dinheiro",
+  pix: "PIX",
+  cartao_credito: "Cartão Créd.",
+  cartao_debito: "Cartão Déb.",
+  credito_aluno: "Créd. Aluno",
+};
+
+const PAYMENT_ORDER: PaymentMethod[] = [
+  "dinheiro",
+  "pix",
+  "cartao_debito",
+  "cartao_credito",
+  "credito_aluno",
+];
 
 function formatPrice(value: number) {
   return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(value);
@@ -344,7 +363,7 @@ export default function POSPage() {
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">Forma de pagamento</label>
               <div className="grid grid-cols-3 gap-2">
-                {(["dinheiro", "pix", "credito_aluno"] as PaymentMethod[]).map((method) => (
+                {PAYMENT_ORDER.map((method) => (
                   <button
                     key={method}
                     onClick={() => { setPaymentMethod(method); setAmountPaid(""); setCheckoutError(""); }}
@@ -354,7 +373,7 @@ export default function POSPage() {
                         : "bg-white text-gray-600 border-gray-200 hover:border-primary-300"
                     }`}
                   >
-                    {method === "credito_aluno" ? "Crédito" : PAYMENT_LABELS[method]}
+                    {PAYMENT_SHORT[method]}
                   </button>
                 ))}
               </div>

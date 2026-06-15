@@ -25,7 +25,7 @@ export interface Product {
   is_active: boolean;
 }
 
-export type PaymentMethod = "dinheiro" | "pix" | "credito_aluno";
+export type PaymentMethod = "dinheiro" | "pix" | "cartao_credito" | "cartao_debito" | "credito_aluno";
 
 export interface Customer {
   id: string;
