@@ -12,6 +12,10 @@ frontend/node_modules/
 frontend/.next/
 frontend/*.tsbuildinfo
 
+# Print agent
+print-agent/.env
+print-agent/__pycache__/
+
 # OS
 .DS_Store
 Thumbs.db
