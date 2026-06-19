@@ -12,7 +12,7 @@ router = APIRouter(prefix="/print-jobs", tags=["print-jobs"])
 
 class PrintJobOut(BaseModel):
     id: str
-    sale_id: str
+    sale_id: str | None
     payload: str
     status: PrintJobStatus
 

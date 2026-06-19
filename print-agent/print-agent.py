@@ -113,6 +113,40 @@ def render_receipt(payload: dict) -> list[str]:
     return lines
 
 
+def render_report(payload: dict) -> list[str]:
+    """Monta um cupom de relatório (linhas com rótulo à esquerda e valor à direita)."""
+    lines: list[str] = []
+    sep = "-" * RECEIPT_WIDTH
+
+    lines.append(payload.get("title", "RELATORIO").center(RECEIPT_WIDTH))
+    period = payload.get("period")
+    if period:
+        lines.append(truncate(period, RECEIPT_WIDTH).center(RECEIPT_WIDTH))
+    lines.append(sep)
+
+    for row in payload.get("rows", []):
+        left, right = (list(row) + ["", ""])[:2]
+        lines.append(line_lr(str(left), str(right)))
+
+    totals = payload.get("totals", [])
+    if totals:
+        lines.append(sep)
+        for row in totals:
+            left, right = (list(row) + ["", ""])[:2]
+            lines.append(line_lr(str(left), str(right)))
+
+    lines.append(sep)
+    lines.append(f"Emitido {datetime.now():%d/%m/%Y %H:%M}".center(RECEIPT_WIDTH))
+    return lines
+
+
+def render_job(payload: dict) -> list[str]:
+    """Escolhe o renderizador conforme o tipo do payload."""
+    if payload.get("type") == "report":
+        return render_report(payload)
+    return render_receipt(payload)
+
+
 # ---------------------------------------------------------------------------
 # Impressoras
 # ---------------------------------------------------------------------------
@@ -252,10 +286,11 @@ def main() -> None:
                     # Já impresso antes (o mark_done falhou)? Só confirma, não reimprime.
                     if job_id not in printed:
                         payload = json.loads(job["payload"])
-                        printer.print_receipt(render_receipt(payload))
+                        printer.print_receipt(render_job(payload))
                         record_printed(job_id)
                         printed.add(job_id)
-                        log(f"Cupom impresso | job={job_id[:8]} venda={str(payload.get('sale_id',''))[:8]}")
+                        kind = "Relatorio" if payload.get("type") == "report" else "Cupom"
+                        log(f"{kind} impresso | job={job_id[:8]}")
                     api.mark_done(job_id)
                 except requests.RequestException:
                     raise  # erro de rede/API -> trata no except externo (sem reimprimir)

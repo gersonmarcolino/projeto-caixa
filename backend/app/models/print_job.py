@@ -19,7 +19,8 @@ class PrintJob(Base):
 
     id: Mapped[str] = mapped_column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
     tenant_id: Mapped[str] = mapped_column(String, ForeignKey("tenants.id"), nullable=False)
-    sale_id: Mapped[str] = mapped_column(String, ForeignKey("sales.id"), nullable=False)
+    # nullable: jobs de relatório não pertencem a uma venda
+    sale_id: Mapped[str | None] = mapped_column(String, ForeignKey("sales.id"), nullable=True)
     payload: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[PrintJobStatus] = mapped_column(String(10), default=PrintJobStatus.pending)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

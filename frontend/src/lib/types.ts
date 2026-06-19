@@ -27,6 +27,8 @@ export interface Product {
 
 export type PaymentMethod = "dinheiro" | "pix" | "cartao_credito" | "cartao_debito" | "credito_aluno";
 
+export type ReportType = "products_sold" | "top_products" | "payment_methods";
+
 export interface Customer {
   id: string;
   name: string;
