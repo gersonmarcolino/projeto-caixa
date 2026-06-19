@@ -2,7 +2,7 @@
 
 **Projeto:** Sistema de Gestão de Lanchonete Escolar  
 **Modelo:** SaaS (venda de serviço por escola)  
-**Status:** Em desenvolvimento (Fases 1, 2 e 3 concluídas)  
+**Status:** Em desenvolvimento (Fases 1, 2, 3 concluídas; Fase 4 parcial)  
 **Criado em:** 2026-06-05  
 **Última atualização:** 2026-06-15
 
@@ -146,11 +146,14 @@ print_jobs       → fila de impressão (status: pending/done)
 - [x] Pagamento por crédito do aluno no POS (com seleção de cliente)
 - [x] Extrato com itens da compra (expansível)
 
-### Fase 4 — Relatórios (Semana 6)
-- [ ] Relatório de vendas por período
+### Fase 4 — Relatórios (Semana 6) 🟡 PARCIAL
+- [x] Relatório de produtos vendidos por período (impresso na térmica)
+- [x] Relatório de mais vendidos (ranking) (impresso na térmica)
+- [x] Relatório de formas de pagamento (impresso na térmica)
+- [x] Filtro de período (atalhos + intervalo) e por horário
 - [ ] Relatório de estoque
 - [ ] Relatório de crédito/inadimplência
-- [ ] Export PDF e Excel
+- [ ] Export PDF e Excel (tela)
 
 ### Fase 5 — Deploy & Produto (Semana 7)
 - [ ] Deploy backend (Railway)
@@ -244,11 +247,23 @@ Repositório: consolidado tudo no branch `main` (branch `master` removido).
   `/print-jobs/pending`, imprime o cupom e marca como `done`
 - Modos de impressora: console (testes), usb, network, serial
 - Testado em modo console (cupom formatado: itens, total, troco, id da venda)
+- Nome do aluno no cupom em vendas no crédito
+- Hardening (revisão adversarial): code page CP850, idempotência via log
+  local, reautenticação em 401, reconexão de impressora
+
+### 2026-06-18 — Relatórios na térmica (Fase 4 parcial)
+- `POST /reports/print`: produtos vendidos, mais vendidos (ranking) e
+  formas de pagamento, agregados por período; gera print_job de relatório
+- `print_jobs.sale_id` agora nullable (migration); agente com `render_report`
+- Página `/reports`: período (atalhos + intervalo) e **filtro por horário**
+- Correções da revisão: agregação por product_id, totais sobre o período
+  inteiro, borda half-open, desempate no ranking
 
 ---
 
 ## Próximo Passo
 
 Itens pendentes para concluir o produto:
-1. **Fase 4 — Relatórios** — vendas/estoque/crédito com export PDF e Excel
+1. **Fase 4 (restante)** — relatório de estoque, crédito/inadimplência e
+   export em PDF/Excel (tela)
 2. **Fase 5 — Deploy** — backend (Railway), frontend (Vercel), onboarding de escola
