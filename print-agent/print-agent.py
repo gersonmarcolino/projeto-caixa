@@ -24,6 +24,14 @@ from datetime import datetime
 import requests
 from dotenv import load_dotenv
 
+# Garante acentuação correta no console (nomes como "José", "Conceição").
+# No Windows o stdout costuma vir em cp1252 e truncaria/quebraria os acentos.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[attr-defined]
+    except (AttributeError, ValueError):
+        pass
+
 load_dotenv()
 
 API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
@@ -33,6 +41,12 @@ POLL_INTERVAL = float(os.getenv("POLL_INTERVAL", "2"))
 STORE_NAME = os.getenv("STORE_NAME", "Cafeteria")
 RECEIPT_WIDTH = int(os.getenv("RECEIPT_WIDTH", "32"))
 PRINTER_TYPE = os.getenv("PRINTER_TYPE", "console").lower()
+# Code page da impressora térmica. CP850 cobre os acentos do português.
+# Alguns modelos só trazem CP437/WPC1252 — ajuste conforme o manual.
+PRINTER_CODEPAGE = os.getenv("PRINTER_CODEPAGE", "CP850")
+# Registro local de cupons já enviados à impressora (evita reimpressão se o
+# mark_done falhar, ou após crash/reinício do agente).
+PRINTED_LOG = os.getenv("PRINTED_LOG", "printed-jobs.log")
 
 PAYMENT_LABELS = {
     "dinheiro": "Dinheiro",
@@ -53,11 +67,17 @@ def format_brl(value) -> str:
     return f"R$ {float(value):.2f}".replace(".", ",")
 
 
+def truncate(text: str, width: int) -> str:
+    """Trunca com reticências ASCII (seguras em qualquer code page da térmica)."""
+    if len(text) <= width:
+        return text
+    return text[: max(0, width - 3)] + "..."
+
+
 def line_lr(left: str, right: str, width: int = RECEIPT_WIDTH) -> str:
     """Linha com texto à esquerda e valor à direita, dentro da largura."""
     space = width - len(right)
-    if len(left) > space - 1:
-        left = left[: max(0, space - 2)] + "…"
+    left = truncate(left, space - 1)
     return f"{left:<{space}}{right}"
 
 
@@ -79,6 +99,9 @@ def render_receipt(payload: dict) -> list[str]:
 
     method = PAYMENT_LABELS.get(payload.get("payment_method"), payload.get("payment_method", ""))
     lines.append(f"Pagamento: {method}")
+    customer_name = payload.get("customer_name")
+    if customer_name:
+        lines.append(truncate(f"Aluno: {customer_name}", RECEIPT_WIDTH))
     if payload.get("amount_paid") is not None:
         lines.append(line_lr("Recebido", format_brl(payload.get("amount_paid"))))
     if payload.get("change") is not None:
@@ -132,11 +155,35 @@ class EscposPrinter:
 
     def __init__(self, device):
         self.device = device
+        # Fixa a code page (determinístico) em vez de depender do auto-encoding,
+        # garantindo acentos corretos em nomes como "José"/"Conceição".
+        try:
+            self.device.charcode(PRINTER_CODEPAGE)
+        except Exception as exc:  # noqa: BLE001
+            log(f"Aviso: não foi possível fixar code page {PRINTER_CODEPAGE}: {exc}")
 
     def print_receipt(self, lines: list[str]) -> None:
         for ln in lines:
             self.device.text(ln + "\n")
         self.device.cut()
+
+
+# ---------------------------------------------------------------------------
+# Registro local de cupons impressos (idempotência)
+# ---------------------------------------------------------------------------
+
+def load_printed() -> set[str]:
+    try:
+        with open(PRINTED_LOG, encoding="utf-8") as f:
+            return {line.strip() for line in f if line.strip()}
+    except FileNotFoundError:
+        return set()
+
+
+def record_printed(job_id: str) -> None:
+    with open(PRINTED_LOG, "a", encoding="utf-8") as f:
+        f.write(job_id + "\n")
+        f.flush()
 
 
 # ---------------------------------------------------------------------------
@@ -157,22 +204,25 @@ class ApiClient:
         self.token = resp.json()["access_token"]
         log("Autenticado na API.")
 
-    def _headers(self) -> dict:
-        return {"Authorization": f"Bearer {self.token}"}
-
-    def get_pending(self) -> list[dict]:
+    def _request(self, method: str, path: str, **kwargs) -> requests.Response:
+        """Faz a requisição reautenticando uma vez em caso de 401 (token expirado)."""
         if not self.token:
             self.login()
-        resp = requests.get(f"{API_URL}/api/print-jobs/pending", headers=self._headers(), timeout=10)
+        url = f"{API_URL}{path}"
+        headers = {"Authorization": f"Bearer {self.token}"}
+        resp = requests.request(method, url, headers=headers, timeout=10, **kwargs)
         if resp.status_code == 401:
             self.login()
-            resp = requests.get(f"{API_URL}/api/print-jobs/pending", headers=self._headers(), timeout=10)
+            headers = {"Authorization": f"Bearer {self.token}"}
+            resp = requests.request(method, url, headers=headers, timeout=10, **kwargs)
         resp.raise_for_status()
-        return resp.json()
+        return resp
+
+    def get_pending(self) -> list[dict]:
+        return self._request("GET", "/api/print-jobs/pending").json()
 
     def mark_done(self, job_id: str) -> None:
-        resp = requests.patch(f"{API_URL}/api/print-jobs/{job_id}/done", headers=self._headers(), timeout=10)
-        resp.raise_for_status()
+        self._request("PATCH", f"/api/print-jobs/{job_id}/done")
 
 
 # ---------------------------------------------------------------------------
@@ -186,30 +236,38 @@ def main() -> None:
 
     log(f"Print Agent iniciado | API={API_URL} | impressora={PRINTER_TYPE} | intervalo={POLL_INTERVAL}s")
 
-    try:
-        printer = build_printer()
-    except Exception as exc:  # noqa: BLE001
-        log(f"ERRO ao inicializar a impressora: {exc}")
-        sys.exit(1)
-
     api = ApiClient()
+    printer = None
+    printed = load_printed()
 
     while True:
         try:
-            jobs = api.get_pending()
-            for job in jobs:
+            if printer is None:
+                printer = build_printer()  # (re)conecta; não derruba o agente se falhar
+                log(f"Impressora pronta ({PRINTER_TYPE}).")
+
+            for job in api.get_pending():
+                job_id = job["id"]
                 try:
-                    payload = json.loads(job["payload"])
-                    printer.print_receipt(render_receipt(payload))
-                    api.mark_done(job["id"])
-                    log(f"Cupom impresso e baixado | job={job['id'][:8]} venda={str(payload.get('sale_id',''))[:8]}")
-                except Exception as exc:  # noqa: BLE001
-                    # Não marca como done: será tentado de novo no próximo ciclo
-                    log(f"Falha ao imprimir job {job['id'][:8]}: {exc}")
+                    # Já impresso antes (o mark_done falhou)? Só confirma, não reimprime.
+                    if job_id not in printed:
+                        payload = json.loads(job["payload"])
+                        printer.print_receipt(render_receipt(payload))
+                        record_printed(job_id)
+                        printed.add(job_id)
+                        log(f"Cupom impresso | job={job_id[:8]} venda={str(payload.get('sale_id',''))[:8]}")
+                    api.mark_done(job_id)
+                except requests.RequestException:
+                    raise  # erro de rede/API -> trata no except externo (sem reimprimir)
+                except Exception as exc:  # noqa: BLE001 — falha de impressão
+                    log(f"Falha ao imprimir job {job_id[:8]}: {exc}")
+                    printer = None  # reconstrói a conexão no próximo ciclo (impressora pode ter caído)
+                    break
         except requests.RequestException as exc:
             log(f"Sem conexão com a API: {exc}")
         except Exception as exc:  # noqa: BLE001
             log(f"Erro inesperado: {exc}")
+            printer = None
 
         time.sleep(POLL_INTERVAL)
 

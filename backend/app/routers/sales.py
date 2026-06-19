@@ -124,6 +124,7 @@ def create_sale(payload: SaleCreate, current_user: User = Depends(get_current_us
             "payment_method": payload.payment_method,
             "amount_paid": float(amount_paid) if amount_paid is not None else None,
             "change": float(change) if change is not None else None,
+            "customer_name": customer.name if customer else None,
             "items": receipt_items,
         }),
     )

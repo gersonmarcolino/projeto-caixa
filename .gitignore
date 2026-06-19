@@ -15,6 +15,7 @@ frontend/*.tsbuildinfo
 # Print agent
 print-agent/.env
 print-agent/__pycache__/
+print-agent/printed-jobs.log
 
 # OS
 .DS_Store
