@@ -25,33 +25,36 @@ const QUICK: { key: QuickKey; label: string }[] = [
 function startOfDay(d: Date) {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
 }
-function endOfDay(d: Date) {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+function nextDayStart(d: Date) {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1, 0, 0, 0, 0);
 }
 function fmt(d: Date) {
   return d.toLocaleDateString("pt-BR");
 }
 
-function rangeFor(key: QuickKey): { start: Date; end: Date } {
+// endDisplay = último dia INCLUSIVO (para exibição). O fim exclusivo (próximo
+// dia 00:00) é calculado só no envio, evitando perder vendas na borda do dia.
+function rangeFor(key: QuickKey): { start: Date; endDisplay: Date } {
   const now = new Date();
-  if (key === "today") return { start: startOfDay(now), end: endOfDay(now) };
+  const today = startOfDay(now);
+  if (key === "today") return { start: today, endDisplay: today };
   if (key === "yesterday") {
     const y = new Date(now);
     y.setDate(now.getDate() - 1);
-    return { start: startOfDay(y), end: endOfDay(y) };
+    return { start: startOfDay(y), endDisplay: startOfDay(y) };
   }
   if (key === "week") {
     const s = new Date(now);
     s.setDate(now.getDate() - now.getDay()); // domingo
-    return { start: startOfDay(s), end: endOfDay(now) };
+    return { start: startOfDay(s), endDisplay: today };
   }
   // month
-  return { start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0), end: endOfDay(now) };
+  return { start: new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0), endDisplay: today };
 }
 
-function periodLabel(start: Date, end: Date) {
+function periodLabel(start: Date, endDisplay: Date) {
   const a = fmt(start);
-  const b = fmt(end);
+  const b = fmt(endDisplay);
   return a === b ? a : `${a} a ${b}`;
 }
 
@@ -61,6 +64,8 @@ export default function ReportsPage() {
   const [quick, setQuick] = useState<QuickKey>("today");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
+  const [startTime, setStartTime] = useState("");
+  const [endTime, setEndTime] = useState("");
   const [sending, setSending] = useState<ReportType | null>(null);
   const [message, setMessage] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
@@ -71,21 +76,53 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  function currentRange(): { start: Date; end: Date } | null {
+  function currentRange(): { start: Date; endDisplay: Date } | null {
     if (quick !== "custom") return rangeFor(quick);
     if (!customStart || !customEnd) return null;
     const [sy, sm, sd] = customStart.split("-").map(Number);
     const [ey, em, ed] = customEnd.split("-").map(Number);
     const start = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
-    const end = new Date(ey, em - 1, ed, 23, 59, 59, 999);
-    if (start > end) return null;
-    return { start, end };
+    const endDisplay = new Date(ey, em - 1, ed, 0, 0, 0, 0);
+    if (start > endDisplay) return null;
+    return { start, endDisplay };
   }
 
   const range = currentRange();
 
+  // Aplica o filtro de horário (opcional) sobre as datas do período.
+  // start inclusivo; end exclusivo (próximo dia 00:00 quando não há hora final).
+  let effective: { start: Date; end: Date; label: string } | null = null;
+  if (range) {
+    const start = new Date(range.start);
+    if (startTime) {
+      const [h, m] = startTime.split(":").map(Number);
+      start.setHours(h, m, 0, 0);
+    }
+    let end: Date;
+    if (endTime) {
+      const [h, m] = endTime.split(":").map(Number);
+      end = new Date(range.endDisplay);
+      end.setHours(h, m, 0, 0);
+    } else {
+      end = nextDayStart(range.endDisplay);
+    }
+    if (start < end) {
+      const timePart = startTime || endTime ? ` ${startTime || "00:00"}-${endTime || "23:59"}` : "";
+      effective = { start, end, label: periodLabel(range.start, range.endDisplay) + timePart };
+    }
+  }
+
+  const customError =
+    quick === "custom" && !range
+      ? !customStart || !customEnd
+        ? "Preencha as duas datas."
+        : "A data final não pode ser anterior à inicial."
+      : range && !effective
+        ? "O horário final deve ser depois do inicial."
+        : "";
+
   async function handlePrint(type: ReportType) {
-    if (!range) {
+    if (!effective) {
       setMessage({ kind: "err", text: "Selecione um período válido." });
       return;
     }
@@ -94,9 +131,9 @@ export default function ReportsPage() {
     try {
       const { data } = await api.post("/reports/print", {
         report_type: type,
-        start: range.start.toISOString(),
-        end: range.end.toISOString(),
-        period_label: periodLabel(range.start, range.end),
+        start: effective.start.toISOString(),
+        end: effective.end.toISOString(),
+        period_label: effective.label,
       });
       setMessage({ kind: "ok", text: `"${data.title}" enviado para a impressora (${data.rows} linha(s)).` });
     } catch {
@@ -169,8 +206,37 @@ export default function ReportsPage() {
               </div>
             )}
 
-            {range && (
-              <p className="text-xs text-gray-400 mt-2">Período selecionado: {periodLabel(range.start, range.end)}</p>
+            {/* Horário (opcional) */}
+            <div className="mt-3">
+              <label className="block text-xs font-medium text-gray-500 mb-1">Horário (opcional)</label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="time"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                <span className="text-gray-400 text-sm">às</span>
+                <input
+                  type="time"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                />
+                {(startTime || endTime) && (
+                  <button
+                    onClick={() => { setStartTime(""); setEndTime(""); }}
+                    className="text-xs text-gray-400 hover:text-gray-600 underline"
+                  >
+                    limpar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {customError && <p className="text-xs text-red-500 mt-2">{customError}</p>}
+            {effective && (
+              <p className="text-xs text-gray-400 mt-2">Período selecionado: {effective.label}</p>
             )}
           </div>
 
@@ -185,7 +251,7 @@ export default function ReportsPage() {
                 <p className="text-xs text-gray-500 mt-1 flex-1">{desc}</p>
                 <button
                   onClick={() => handlePrint(type)}
-                  disabled={sending !== null || !range}
+                  disabled={sending !== null || !effective}
                   className="mt-3 flex items-center justify-center gap-1.5 bg-primary-600 text-white py-2 rounded-lg text-sm font-medium hover:bg-primary-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                 >
                   <Printer size={14} />

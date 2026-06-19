@@ -32,11 +32,15 @@ def _brl(value) -> str:
     return f"R$ {float(value or 0):.2f}".replace(".", ",")
 
 
+RANKING_LIMIT = 20
+
+
 def _product_rows(db: Session, tenant_id: str, start, end, *, ranked: bool):
     """Agrega itens vendidos por produto no período. Retorna (rows, totals)."""
     results = (
         db.query(
-            SaleItem.product_name,
+            SaleItem.product_id,
+            func.max(SaleItem.product_name).label("name"),  # nome representativo
             func.sum(SaleItem.quantity).label("qty"),
             func.sum(SaleItem.subtotal).label("revenue"),
         )
@@ -44,24 +48,29 @@ def _product_rows(db: Session, tenant_id: str, start, end, *, ranked: bool):
         .filter(
             Sale.tenant_id == tenant_id,
             Sale.created_at >= start,
-            Sale.created_at <= end,
+            Sale.created_at < end,  # borda half-open: cobre o dia todo sem depender de ms
         )
-        .group_by(SaleItem.product_name)
+        .group_by(SaleItem.product_id)
         .all()
     )
 
-    items = [(name, int(qty or 0), float(revenue or 0)) for name, qty, revenue in results]
+    items = [(name, int(qty or 0), float(revenue or 0)) for _pid, name, qty, revenue in results]
+
+    # Totais sempre sobre o conjunto completo do período (antes de qualquer corte)
+    total_qty = sum(qty for _n, qty, _r in items)
+    total_rev = sum(rev for _n, _q, rev in items)
+    totals = [["Itens vendidos", str(total_qty)], ["Faturamento", _brl(total_rev)]]
+
     if ranked:
-        items.sort(key=lambda r: r[1], reverse=True)
-        items = items[:20]
-        rows = [[f"{i}. {name}", str(qty)] for i, (name, qty, _rev) in enumerate(items, 1)]
+        items.sort(key=lambda r: (-r[1], -r[2], r[0].lower()))  # qty desc, fat desc, nome asc
+        shown = items[:RANKING_LIMIT]
+        rows = [[f"{i}. {name}", str(qty)] for i, (name, qty, _rev) in enumerate(shown, 1)]
+        if len(items) > len(shown):
+            rows.append([f"... e mais {len(items) - len(shown)} produto(s)", ""])
     else:
         items.sort(key=lambda r: r[0].lower())
         rows = [[name, str(qty)] for name, qty, _rev in items]
 
-    total_qty = sum(qty for _n, qty, _r in items)
-    total_rev = sum(rev for _n, _q, rev in items)
-    totals = [["Itens vendidos", str(total_qty)], ["Faturamento", _brl(total_rev)]]
     return rows, totals
 
 
@@ -75,7 +84,7 @@ def _payment_rows(db: Session, tenant_id: str, start, end):
         .filter(
             Sale.tenant_id == tenant_id,
             Sale.created_at >= start,
-            Sale.created_at <= end,
+            Sale.created_at < end,  # borda half-open
         )
         .group_by(Sale.payment_method)
         .all()

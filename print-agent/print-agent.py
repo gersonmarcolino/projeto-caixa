@@ -76,8 +76,9 @@ def truncate(text: str, width: int) -> str:
 
 def line_lr(left: str, right: str, width: int = RECEIPT_WIDTH) -> str:
     """Linha com texto à esquerda e valor à direita, dentro da largura."""
-    space = width - len(right)
-    left = truncate(left, space - 1)
+    right = truncate(right, width)
+    space = max(0, width - len(right))
+    left = truncate(left, max(0, space - 1))
     return f"{left:<{space}}{right}"
 
 
