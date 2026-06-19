@@ -2,7 +2,7 @@
 
 **Projeto:** Sistema de Gestão de Lanchonete Escolar  
 **Modelo:** SaaS (venda de serviço por escola)  
-**Status:** Em desenvolvimento (Fases 1–3 concluídas)  
+**Status:** Em desenvolvimento (Fases 1, 2 e 3 concluídas)  
 **Criado em:** 2026-06-05  
 **Última atualização:** 2026-06-15
 
@@ -129,13 +129,13 @@ print_jobs       → fila de impressão (status: pending/done)
 - [x] CRUD de produtos e categorias (com validação de categoria por tenant)
 - [x] Layout base Next.js (sidebar, header, rotas protegidas)
 
-### Fase 2 — POS Core (Semana 3-4) ✅ (exceto print-agent)
+### Fase 2 — POS Core (Semana 3-4) ✅ CONCLUÍDA
 - [x] Interface de caixa (POS) — com busca de produto
 - [x] Carrinho e fechamento de venda — aritmética monetária em Decimal
 - [x] Baixa de estoque automática por venda
 - [x] Fila de impressão (tabela print_jobs)
 - [x] Tela de estoque (entrada de mercadoria, alerta de estoque baixo)
-- [ ] Agente de impressão local (`print-agent.py`) — PENDENTE
+- [x] Agente de impressão local (`print-agent.py`) — console/usb/network/serial
 
 ### Fase 3 — Crédito & Devedores (Semana 5) ✅ CONCLUÍDA
 - [x] Cadastro de alunos/clientes
@@ -239,11 +239,16 @@ Novas páginas e features:
 
 Repositório: consolidado tudo no branch `main` (branch `master` removido).
 
+### 2026-06-18 — Print-agent (Fase 2 concluída)
+- Agente Python standalone (`print-agent/`) que faz polling em
+  `/print-jobs/pending`, imprime o cupom e marca como `done`
+- Modos de impressora: console (testes), usb, network, serial
+- Testado em modo console (cupom formatado: itens, total, troco, id da venda)
+
 ---
 
 ## Próximo Passo
 
 Itens pendentes para concluir o produto:
-1. **Print-agent** (`print-agent.py`) — fecha a Fase 2 (impressão real do cupom)
-2. **Fase 4 — Relatórios** — vendas/estoque/crédito com export PDF e Excel
-3. **Fase 5 — Deploy** — backend (Railway), frontend (Vercel), onboarding de escola
+1. **Fase 4 — Relatórios** — vendas/estoque/crédito com export PDF e Excel
+2. **Fase 5 — Deploy** — backend (Railway), frontend (Vercel), onboarding de escola
